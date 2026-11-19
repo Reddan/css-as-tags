@@ -1,0 +1,22 @@
+{
+  "name": "css-as-tags",
+  "type": "module",
+  "displayName": "CSS as Tags",
+  "description": "Navigate and rename CSS classes across stylesheets and source files, and spot selectors with no known uses.",
+  "version": "0.1.0",
+  "publisher": "css-as-tags",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:css",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact"
+  ],
+  "main": "./dist/client.cjs"
+}

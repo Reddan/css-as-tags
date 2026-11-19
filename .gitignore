@@ -1,0 +1,5 @@
+node_modules/
+editor/dist/
+*.vsix
+*.tgz
+.DS_Store

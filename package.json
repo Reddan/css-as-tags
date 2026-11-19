@@ -1,0 +1,89 @@
+{
+  "name": "css-as-tags",
+  "version": "0.1.0",
+  "description": "Import components, class names and custom properties from ordinary CSS",
+  "type": "module",
+  "files": [
+    "lib",
+    "adapters",
+    "editor/css-as-tags.vsix",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./lib/css.js",
+    "./vite": {
+      "types": "./lib/vite.d.ts",
+      "default": "./lib/vite.js"
+    },
+    "./dom": {
+      "types": "./adapters/dom.d.ts",
+      "default": "./adapters/dom.js"
+    },
+    "./react": {
+      "types": "./adapters/react.d.ts",
+      "default": "./adapters/react.js"
+    },
+    "./solid": {
+      "types": "./adapters/solid.d.ts",
+      "default": "./adapters/solid.js"
+    }
+  },
+  "bin": {
+    "css-as-tags": "./lib/cli.js"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "node --test test/*.test.js",
+    "test:browser": "node test/browser.mjs",
+    "build:editor": "node scripts/build-editor.js",
+    "package:editor": "npm run build:editor && cd editor && vsce package --no-dependencies --allow-missing-repository --skip-license --out css-as-tags.vsix",
+    "prepack": "npm run package:editor"
+  },
+  "dependencies": {
+    "es-module-lexer": "^1.7.0",
+    "magic-string": "^0.30.0",
+    "postcss": "^8.5.0",
+    "postcss-selector-parser": "^7.1.0",
+    "postcss-value-parser": "^4.2.0",
+    "source-map-js": "^1.2.3"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "solid-js": "^1.9",
+    "vite": "^6 || ^7 || ^8"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/react": "^19",
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "@vscode/vsce": "^3.7.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "playwright-core": "^1.56.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "solid-js": "^1.9.9",
+    "typescript": "~5.9.3",
+    "vite": "^6.4.1",
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  }
+}
