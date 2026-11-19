@@ -76,6 +76,7 @@
     "esbuild": "^0.25.0",
     "eslint": "^9.39.5",
     "eslint-plugin-simple-import-sort": "^14.0.0",
+    "parse5": "^7.3.0",
     "playwright-core": "^1.56.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

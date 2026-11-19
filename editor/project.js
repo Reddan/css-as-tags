@@ -2,6 +2,8 @@ import {dirname, join, relative, resolve, sep} from "node:path"
 import ts from "typescript"
 import {parseSheet, visitClasses} from "../lib/css.js"
 import {declarations} from "../lib/module.js"
+import {htmlClasses} from "./html.js"
+import {classRename} from "./rename.js"
 
 export function projectLocation(file, folders) {
   const folder = folders.filter(root => file.startsWith(root + sep)).sort((a, b) => b.length - a.length)[0] ?? dirname(file)
@@ -68,23 +70,39 @@ export function createProject({root, config}, buffers) {
     if (!literalCache.has(source)) literalCache.set(source, literalClasses(source))
     return literalCache.get(source)
   }
-  let cssFiles
-  function literalDefinitions(source, name) {
-    const matching = files => [...new Set(files)].flatMap(file => {
+  const projectFiles = new Map()
+  function filesWith(extension) {
+    if (!projectFiles.has(extension)) projectFiles.set(extension, ts.sys.readDirectory(root, [extension],
+      ["**/node_modules/**", "**/dist/**", "**/build/**", ...(json?.exclude ?? [])], ["**/*"]))
+    return new Set([...projectFiles.get(extension), ...[...buffers.keys()].filter(f => f.startsWith(root + sep) && f.endsWith(extension))])
+  }
+  const html = new Map()
+  function htmlAt(file) {
+    const current = version(file)
+    if (html.get(file)?.version !== current) html.set(file, {version: current, tokens: htmlClasses(read(file) ?? "", file)})
+    return html.get(file).tokens
+  }
+  function matchingSheets(files, name) {
+    return [...new Set(files)].flatMap(file => {
       const sheet = sheetAt(file)
       return sheet?.classes.has(name) ? [{sheet, name}] : []
     })
-    const direct = matching(source.statements.flatMap(node => {
+  }
+  function literalDefinitions(source, name) {
+    const direct = matchingSheets(source.statements.flatMap(node => {
       if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return []
       const path = node.moduleSpecifier.text.split("?")[0]
       return path.startsWith(".") && path.endsWith(".css") ? [resolve(dirname(source.fileName), path)] : []
-    }))
+    }), name)
     if (direct.length) return direct
-    cssFiles ??= ts.sys.readDirectory(root, [".css"], ["**/node_modules/**", "**/dist/**", "**/build/**", ...(json?.exclude ?? [])], ["**/*"])
-    return matching([...cssFiles, ...[...buffers.keys()].filter(f => f.startsWith(root + sep) && f.endsWith(".css"))])
+    return matchingSheets(filesWith(".css"), name)
   }
 
   function definitions(file, offset) {
+    if (file.endsWith(".html")) {
+      const token = htmlAt(file).find(span => span.start <= offset && offset < span.start + span.length)
+      return token ? matchingSheets(filesWith(".css"), token.name) : []
+    }
     if (file.endsWith(".css")) {
       const sheet = sheetAt(file)
       if (!sheet) return []
@@ -126,6 +144,9 @@ export function createProject({root, config}, buffers) {
       }
     }
     if (sheet.classes.has(name)) {
+      for (const file of filesWith(".html")) {
+        for (const span of htmlAt(file)) if (span.name === name) result.push({file, ...span})
+      }
       for (const source of program?.getSourceFiles() ?? []) {
         if (source.isDeclarationFile || source.fileName.includes("/node_modules/") || !source.text.includes(name)) continue
         for (const span of literals(source)) {
@@ -135,7 +156,8 @@ export function createProject({root, config}, buffers) {
     }
     return [...new Map(result.map(hit => [JSON.stringify([hit.file, hit.start, hit.length]), hit])).values()]
   }
-  return {definitions, references, read, dispose: () => service.dispose()}
+  const rename = classRename({root, service, filesWith, sheetAt, htmlAt, definitions, literals, read, declarationFile})
+  return {definitions, references, ...rename, read, dispose: () => service.dispose()}
 }
 
 // Global CSS also applies to unbound markup. Match complete tokens only in
@@ -143,6 +165,9 @@ export function createProject({root, config}, buffers) {
 function literalClasses(source) {
   const found = []
   function addLiterals(node) {
+    if (ts.isParenthesizedExpression(node)) return addLiterals(node.expression)
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
+      return addLiterals(node.right)
     if (ts.isStringLiteralLike(node)) {
       const content = node.getText(source).slice(1, -1)
       for (const m of content.matchAll(/\S+/g)) {
@@ -153,6 +178,13 @@ function literalClasses(source) {
       addLiterals(node.whenTrue)
       addLiterals(node.whenFalse)
     } else if (ts.isTemplateExpression(node)) {
+      let before = node.head.text
+      for (const [i, span] of node.templateSpans.entries()) {
+        const after = span.literal.text
+        if ((/\s$/.test(before) || (i === 0 && !before))
+          && (/^\s/.test(after) || (i === node.templateSpans.length - 1 && !after))) addLiterals(span.expression)
+        before = after
+      }
       for (const chunk of [node.head, ...node.templateSpans.map(span => span.literal)]) {
         const raw = chunk.getText(source)
         const first = chunk === node.head
@@ -171,9 +203,13 @@ function literalClasses(source) {
       if (attr === "class" || attr === "className") addLiterals(node.initializer)
       if (attr === "classList" && ts.isJsxExpression(node.initializer) && ts.isObjectLiteralExpression(node.initializer.expression ?? node)) {
         for (const item of node.initializer.expression.properties) {
-          if (item.name && (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name))) {
-            found.push({name: item.name.text, start: item.name.getStart(source) + (ts.isStringLiteral(item.name) ? 1 : 0), length: item.name.text.length})
-          }
+          if (item.name && ts.isStringLiteral(item.name)) addLiterals(item.name)
+          if (item.name && ts.isIdentifier(item.name)) found.push({
+            name: item.name.text,
+            start: item.name.getStart(source),
+            length: item.name.text.length,
+            key: ts.isShorthandPropertyAssignment(item) ? "shorthand" : "identifier",
+          })
         }
       }
     }
@@ -187,7 +223,7 @@ function literalClasses(source) {
       if (["querySelector", "querySelectorAll", "matches", "closest"].includes(call.name.text) && arg && ts.isStringLiteralLike(arg)) {
         try {
           visitClasses(arg.getText(source).slice(1, -1), (cssName, start, length) => {
-            found.push({name: cssName, start: arg.getStart(source) + 1 + start, length})
+            found.push({name: cssName, start: arg.getStart(source) + 1 + start, length, selector: true})
           })
         } catch { /* An incomplete selector has no navigable range. */ }
       }
