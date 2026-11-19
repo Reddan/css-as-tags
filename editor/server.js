@@ -31,14 +31,16 @@ function navigation(params, references) {
   const key = location.config ?? location.root
   if (!projects.has(key)) projects.set(key, createProject(location, buffers))
   const project = projects.get(key)
-  const symbol = project.definition(file, document.offsetAt(params.position))
-  if (!symbol) return []
-  const {sheet, name} = symbol
-  const first = (sheet.classes.get(name) ?? sheet.variables.get(name))?.[0]
-  const hits = references ? project.references(symbol, params.context.includeDeclaration)
-    : first ? [{file: sheet.file, ...first}] : []
+  const symbols = project.definitions(file, document.offsetAt(params.position))
+  const matches = symbols.flatMap(symbol => {
+    if (references) return project.references(symbol, params.context.includeDeclaration)
+    const {sheet, name} = symbol
+    const first = (sheet.classes.get(name) ?? sheet.variables.get(name))?.[0]
+    return first ? [{file: sheet.file, ...first}] : []
+  })
+  const hits = new Map(matches.map(hit => [JSON.stringify([hit.file, hit.start, hit.length]), hit]))
   const files = new Map(buffers)
-  return hits.map(hit => {
+  return [...hits.values()].map(hit => {
     const uri = pathToFileURL(hit.file).href
     if (!files.has(hit.file)) files.set(hit.file, TextDocument.create(uri, "", 0, project.read(hit.file)))
     const doc = files.get(hit.file)
