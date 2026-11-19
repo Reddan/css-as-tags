@@ -1,4 +1,7 @@
 import type {ComponentProps, JSX, ValidComponent} from "solid-js"
+import type {NativeElementName} from "./elements.js"
 
-export type Tag = <T extends ValidComponent = "div">(props: {as?: T, class?: string, className?: string} & Omit<ComponentProps<NoInfer<T>>, "as" | "class" | "className">) => JSX.Element
+type Props<T extends ValidComponent> = {class?: string, className?: string} & Omit<ComponentProps<T>, "as" | "class" | "className">
+type ElementTags = {readonly [T in NativeElementName & keyof JSX.IntrinsicElements]: (props: Props<T>) => JSX.Element}
+export type Tag = ElementTags & (<T extends ValidComponent = "div">(props: {as?: T} & Props<NoInfer<T>>) => JSX.Element)
 export function createTag(cssClass: string): Tag

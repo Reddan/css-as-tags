@@ -18,14 +18,28 @@ try {
     window.css = css;
     window.inline = inline;
     const root = document.getElementById("root");
-    const clicked = () => root.dataset.clicked = "yes";`
+    const clicked = () => root.dataset.clicked = "yes";
+    const pathProps = { d: "M1 2h7" };
+    const rectProps = { x: "2", width: "6", height: "4" };`
   const samples = {
-    dom: "root.append(FeedbackToolbar({ as: \"button\", class: \"extra\", children: \"Rate\", onClick: clicked }));",
-    react: `import { createElement } from "react"; import { createRoot } from "react-dom/client";
-      createRoot(root).render(createElement(FeedbackToolbar, { as: "button", className: "extra", onClick: clicked }, "Rate"));`,
-    solid: `import { render } from "solid-js/web"; import { createComponent, createSignal } from "solid-js";
+    dom: `root.append(
+      FeedbackToolbar.button({ class: "extra", children: "Rate", onClick: clicked }),
+      FeedbackToolbar.svg({ children: [FeedbackToolbar.path(pathProps), FeedbackToolbar.rect(rectProps)] }),
+      FeedbackToolbar({ as: "output" })
+    );`,
+    react: `import { createElement as h, Fragment } from "react"; import { createRoot } from "react-dom/client";
+      createRoot(root).render(h(Fragment, null,
+        h(FeedbackToolbar.button, { className: "extra", onClick: clicked }, "Rate"),
+        h(FeedbackToolbar.svg, null, h(FeedbackToolbar.path, { ...pathProps, ref: node => { window.pathRef = node; } }), h(FeedbackToolbar.rect, rectProps)),
+        h(FeedbackToolbar, { as: "output" })
+      ));`,
+    solid: `import { render } from "solid-js/web"; import { createComponent as h, createSignal } from "solid-js";
       const [extra, setExtra] = createSignal("extra"); window.change = () => setExtra("changed");
-      render(() => createComponent(FeedbackToolbar, { as: "button", get class() { return extra() }, onClick: clicked, children: "Rate" }), root);`,
+      render(() => [
+        h(FeedbackToolbar.button, { get class() { return extra() }, onClick: clicked, children: "Rate" }),
+        h(FeedbackToolbar.svg, { get children() { return [h(FeedbackToolbar.path, { ...pathProps, ref: node => { window.pathRef = node; } }), h(FeedbackToolbar.rect, rectProps)] } }),
+        h(FeedbackToolbar, { as: "output" })
+      ], root);`,
   }
   for (const [adapter, app] of Object.entries(samples)) {
     const dir = join(root, adapter)
@@ -50,6 +64,12 @@ try {
       assert.equal(await button.evaluate(node => getComputedStyle(node).gap), "7px")
       assert.deepEqual(await page.evaluate(() => [css.default.feedbackToolbar, css.default["--accent"], inline.includes("feedback-toolbar")]),
         ["feedback-toolbar", "var(--accent)", true])
+      const path = page.locator("svg.feedback-toolbar > path.feedback-toolbar")
+      assert.ok(await path.evaluate(node => node instanceof SVGPathElement && node.getAttribute("d") === "M1 2h7"))
+      assert.ok(await page.locator("svg > rect.feedback-toolbar").evaluate(node => node instanceof SVGRectElement && node.width.baseVal.value === 6))
+      if (adapter !== "dom") assert.ok(await path.evaluate(node => window.pathRef === node))
+      assert.ok(await page.locator("output.feedback-toolbar").count() === 1)
+      assert.ok(await page.evaluate(() => css.FeedbackToolbar.path === css.FeedbackToolbar.path))
       await button.click()
       assert.equal(await page.locator("#root").getAttribute("data-clicked"), "yes")
       if (adapter === "solid") {

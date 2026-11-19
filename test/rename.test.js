@@ -19,6 +19,7 @@ import { FeedbackToolbar, Toolbar } from "./barrel";
 export const view = <FeedbackToolbar class={styles.feedbackToolbar}><Toolbar class="feedback-toolbar"/>
   <div classList={{ "feedback-toolbar": enabled }} class={styles["feedback-toolbar"]}/>
 </FeedbackToolbar>;
+const svg = <FeedbackToolbar.svg><FeedbackToolbar.path d="M1 2h3"/></FeedbackToolbar.svg>;
 const state = { FeedbackToolbar };
 const LocalComponent = 1;
 export const literal = <p className="new feedback-toolbar feedback-toolbar-extra" title="feedback-toolbar"/>;
@@ -40,7 +41,7 @@ function other(styles) { return styles.feedbackToolbar; }`,
     "replay.css": ".replay .review-actions > span {}",
     "barrel.ts": "export { ReviewActions, ReviewActions as Toolbar } from \"./main.css\";",
     "page.tsx": dirty.replace("FeedbackToolbar, Toolbar", "ReviewActions, Toolbar")
-      .replaceAll("<FeedbackToolbar", "<ReviewActions").replace("</FeedbackToolbar>", "</ReviewActions>")
+      .replaceAll("<FeedbackToolbar", "<ReviewActions").replaceAll("</FeedbackToolbar", "</ReviewActions")
       .replace("class={styles.feedbackToolbar}", "class={styles.reviewActions}")
       .replaceAll("class=\"feedback-toolbar\"", "class=\"review-actions\"")
       .replace("\"feedback-toolbar\": enabled", "\"review-actions\": enabled")
@@ -54,6 +55,7 @@ function other(styles) { return styles.feedbackToolbar; }`,
   const origins = [
     ["main.css", ".feedback-toolbar:hover", "review-actions"],
     ["page.tsx", "<FeedbackToolbar", "ReviewActions"],
+    ["page.tsx", "<FeedbackToolbar.path", "ReviewActions"],
     ["page.tsx", "styles.feedbackToolbar", "reviewActions", 8],
     ["page.tsx", "new feedback-toolbar", "review-actions", 5],
     ["page.html", "one feedback-toolbar", "review-actions", 5],
