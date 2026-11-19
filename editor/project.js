@@ -4,6 +4,7 @@ import {parseSheet, visitClasses} from "../lib/css.js"
 import {declarations} from "../lib/module.js"
 import {htmlClasses} from "./html.js"
 import {classRename} from "./rename.js"
+import {scriptClassUses} from "./usage.js"
 
 export function projectLocation(file, folders) {
   const folder = folders.filter(root => file.startsWith(root + sep)).sort((a, b) => b.length - a.length)[0] ?? dirname(file)
@@ -82,6 +83,32 @@ export function createProject({root, config}, buffers) {
     if (html.get(file)?.version !== current) html.set(file, {version: current, tokens: htmlClasses(read(file) ?? "", file)})
     return html.get(file).tokens
   }
+  const scriptUses = new WeakMap()
+  function unusedClasses(files) {
+    const program = service.getProgram()
+    if (program && !scriptUses.has(program)) {
+      const imported = new Map()
+      for (const source of program.getSourceFiles()) {
+        if (!source.fileName.endsWith(".d.css.ts")) continue
+        const sheet = sheetAt(stylesheet(source.fileName))
+        if (sheet) imported.set(source, sheet)
+      }
+      scriptUses.set(program, scriptClassUses(program, imported, literals))
+    }
+    const used = new Set(scriptUses.get(program))
+    for (const file of filesWith(".html")) {
+      for (const token of htmlAt(file)) if (!token.selector) used.add(token.name)
+    }
+    const result = new Map()
+    for (const file of files) {
+      const unused = []
+      for (const [name, spans] of sheetAt(file)?.classes ?? []) {
+        if (!used.has(name)) for (const span of spans) unused.push({name, ...span})
+      }
+      result.set(file, unused)
+    }
+    return result
+  }
   function matchingSheets(files, name) {
     return [...new Set(files)].flatMap(file => {
       const sheet = sheetAt(file)
@@ -157,7 +184,7 @@ export function createProject({root, config}, buffers) {
     return [...new Map(result.map(hit => [JSON.stringify([hit.file, hit.start, hit.length]), hit])).values()]
   }
   const rename = classRename({root, service, filesWith, sheetAt, htmlAt, definitions, literals, read, declarationFile})
-  return {definitions, references, ...rename, read, dispose: () => service.dispose()}
+  return {definitions, references, unusedClasses, ...rename, read, dispose: () => service.dispose()}
 }
 
 // Global CSS also applies to unbound markup. Match complete tokens only in

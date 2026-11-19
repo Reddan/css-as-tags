@@ -1,6 +1,6 @@
 import {dirname} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
-import {createConnection, LSPErrorCodes, ResponseError, TextDocuments, TextDocumentSyncKind} from "vscode-languageserver/node.js"
+import {createConnection, DiagnosticSeverity, DiagnosticTag, LSPErrorCodes, ResponseError, TextDocuments, TextDocumentSyncKind} from "vscode-languageserver/node.js"
 import {TextDocument} from "vscode-languageserver-textdocument"
 import {createProject, projectLocation} from "./project.js"
 
@@ -21,25 +21,64 @@ connection.onInitialize(params => {
     renameProvider: {prepareProvider: true},
   }}
 })
-documents.onDidChangeContent(({document}) => buffers.set(fileURLToPath(document.uri), document))
-documents.onDidClose(({document}) => buffers.delete(fileURLToPath(document.uri)))
+documents.onDidChangeContent(({document}) => {
+  buffers.set(fileURLToPath(document.uri), document)
+  scheduleDiagnostics()
+})
+documents.onDidClose(({document}) => {
+  buffers.delete(fileURLToPath(document.uri))
+  if (document.languageId === "css") connection.sendDiagnostics({uri: document.uri, diagnostics: []})
+  scheduleDiagnostics()
+})
 connection.onDidChangeWatchedFiles(() => {
   for (const project of projects.values()) project.dispose()
   projects.clear()
+  scheduleDiagnostics()
 })
+
+function projectFor(file) {
+  const location = projectLocation(file, roots.length ? roots : [dirname(file)])
+  const key = location.config ?? location.root
+  if (!projects.has(key)) projects.set(key, createProject(location, buffers))
+  return projects.get(key)
+}
 
 function contextAt(params) {
   const document = documents.get(params.textDocument.uri)
   if (!document) return
   const file = fileURLToPath(document.uri)
-  const location = projectLocation(file, roots.length ? roots : [dirname(file)])
-  const key = location.config ?? location.root
-  if (!projects.has(key)) projects.set(key, createProject(location, buffers))
-  const project = projects.get(key)
-  return {project, document, file, offset: document.offsetAt(params.position)}
+  return {project: projectFor(file), document, file, offset: document.offsetAt(params.position)}
 }
 
 const rangeAt = (doc, span) => ({start: doc.positionAt(span.start), end: doc.positionAt(span.start + span.length)})
+
+let diagnosticsTimer
+function scheduleDiagnostics() {
+  clearTimeout(diagnosticsTimer)
+  diagnosticsTimer = setTimeout(() => {
+    const groups = new Map()
+    for (const [file, doc] of buffers) {
+      if (doc.languageId !== "css" || !file.endsWith(".css") || file.endsWith(".module.css")) continue
+      const project = projectFor(file)
+      if (!groups.has(project)) groups.set(project, [])
+      groups.get(project).push(file)
+    }
+    for (const [project, files] of groups) {
+      for (const [file, spans] of project.unusedClasses(files)) {
+        const doc = buffers.get(file)
+        const diagnostics = spans.map(span => ({
+          range: rangeAt(doc, span),
+          severity: DiagnosticSeverity.Hint,
+          tags: [DiagnosticTag.Unnecessary],
+          source: "css-as-tags",
+          code: "unused-class",
+          message: `No static project reference to .${span.name}.`,
+        }))
+        connection.sendDiagnostics({uri: doc.uri, version: doc.version, diagnostics})
+      }
+    }
+  }, 200)
+}
 
 function locations(project) {
   const files = new Map(buffers)
